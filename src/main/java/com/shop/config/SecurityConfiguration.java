@@ -2,47 +2,69 @@ package com.shop.config;
 
 import com.shop.service.MemberService;
 import jakarta.servlet.DispatcherType;
-import lombok.RequiredArgsConstructor;import org.springframework.context.annotation.Bean;
+import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
-import static org.springframework.security.config.Customizer.withDefaults;
 
 @Configuration
 @RequiredArgsConstructor
 @EnableWebSecurity
 public class SecurityConfiguration {
 
-    private final MemberService memberService;
-
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-
-        http.authorizeHttpRequests(request -> request
-                        .dispatcherTypeMatchers(DispatcherType.FORWARD).permitAll()
-                        .anyRequest().authenticated()	// 어떠한 요청이라도 인증필요
-                )
-                .formLogin(login -> login
+    public WebSecurityCustomizer configure() {
+        return (web) -> web.ignoring().requestMatchers(
+                new AntPathRequestMatcher("/css/**"),
+                new AntPathRequestMatcher("/js/**"),
+                new AntPathRequestMatcher("/img/**")
+        );
+    }
+    @Bean
+    SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http.authorizeHttpRequests((authorizeHttpRequests) -> authorizeHttpRequests
+                        .requestMatchers(
+                                new AntPathRequestMatcher("/"),
+                                new AntPathRequestMatcher("/members/**"),
+                                new AntPathRequestMatcher("/item/**"),
+                                new AntPathRequestMatcher("/images/**")
+                                ).permitAll()
+                        .requestMatchers(
+                                new AntPathRequestMatcher("/admin/**")
+                        ).hasRole("ADMIN")
+                        .anyRequest().authenticated())
+                .csrf((csrf) -> csrf
+                        .ignoringRequestMatchers(new AntPathRequestMatcher("/members/**")))
+                .formLogin((formLogin) -> formLogin
                         .loginPage("/members/login")
-                        .loginProcessingUrl("/")
                         .usernameParameter("email")
                         .failureUrl("/members/login/error")
-                        .defaultSuccessUrl("/", true)	// 성공 시 dashboard로
-                        .permitAll()	// 대시보드 이동이 막히면 안되므로 얘는 허용
-                )
-                .logout(withDefaults());	// 로그아웃은 기본설정으로 (/logout으로 인증해제)
-
-
+                        .defaultSuccessUrl("/"))
+                .logout((logout) -> logout
+                        .logoutRequestMatcher(new AntPathRequestMatcher("/members/logout"))
+                        .logoutSuccessUrl("/"));
+        http.exceptionHandling((ex) -> ex
+                .authenticationEntryPoint(new CustomAuthenticationEntryPoint()));
         return http.build();
     }
 
     @Bean
-    public PasswordEncoder passwordEncoder(){
+    public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    AuthenticationManager authenticationManager(AuthenticationConfiguration authenticationConfiguration) throws Exception {
+        return authenticationConfiguration.getAuthenticationManager();
     }
 
 
